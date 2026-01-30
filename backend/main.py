@@ -1,16 +1,13 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from database import engine
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 @app.get("/")
 def root():
-    return {"status": "CalmOS backend running"}
+    try:
+        connection = engine.connect()
+        connection.close()
+        return {"status": "CalmOS backend + database connected"}
+    except Exception as e:
+        return {"error": str(e)}
