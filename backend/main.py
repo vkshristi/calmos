@@ -1,13 +1,12 @@
 from fastapi import FastAPI
-from database import engine
+from sqlalchemy.orm import Session
+from database import engine, SessionLocal
+from models import Base, User
 
 app = FastAPI()
 
+Base.metadata.create_all(bind=engine)
+
 @app.get("/")
 def root():
-    try:
-        connection = engine.connect()
-        connection.close()
-        return {"status": "CalmOS backend + database connected"}
-    except Exception as e:
-        return {"error": str(e)}
+    return {"status": "CalmOS backend running with users table"}
