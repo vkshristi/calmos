@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const [status, setStatus] = useState("Loading...");
+  const router = useRouter();
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/")
-      .then((res) => res.json())
-      .then((data) => setStatus(data.status))
-      .catch(() => setStatus("Backend not reachable"));
-  }, []);
+    const token = localStorage.getItem("token");
+    router.push(token ? "/dashboard" : "/login");
+  }, [router]);
 
-  return (
-    <main style={{ padding: "2rem" }}>
-      <h1>CalmOS</h1>
-      <p>{status}</p>
-    </main>
-  );
+  return null;
 }
