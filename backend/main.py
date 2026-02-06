@@ -2,9 +2,10 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from datetime import date, timedelta
 
 from database import engine, SessionLocal
-from models import Base, User
+from models import Base, User, WellnessLog
 from auth import hash_password, verify_password, create_access_token
 
 app = FastAPI()
@@ -37,20 +38,16 @@ class AuthRequest(BaseModel):
     password: str
 
 
-# ---------- Routes ----------
+# ---------- Auth Routes ----------
 @app.post("/signup")
 def signup(data: AuthRequest, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == data.email).first()
-
     if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     user = User(
         email=data.email,
-        password_hash=hash_password(data.password)
+        password_hash=hash_password(data.password),
     )
 
     db.add(user)
@@ -65,19 +62,116 @@ def login(data: AuthRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
 
     if not user or not verify_password(data.password, user.password_hash):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials"
-        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({"sub": user.email})
 
-    return {
-        "access_token": token,
-        "token_type": "bearer"
-    }
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @app.get("/")
 def root():
     return {"status": "CalmOS auth backend running"}
+
+
+# ---------- Wellness Routes ----------
+@app.post("/wellness")
+def create_wellness(
+    user_email: str,
+    mood: int,
+    sleep_hours: int,
+    water_intake: int,
+    stress: int,
+    exercise: bool,
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    today = date.today()
+
+    existing = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date == today,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Wellness already logged today")
+
+    log = WellnessLog(
+        user_id=user.id,
+        mood=mood,
+        sleep_hours=sleep_hours,
+        water_intake=water_intake,
+        stress=stress,
+        exercise=exercise,
+    )
+
+    db.add(log)
+    db.commit()
+
+    return {"message": "Wellness log created"}
+
+
+@app.get("/wellness/today")
+def get_today_wellness(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    log = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date == date.today(),
+        )
+        .first()
+    )
+
+    if not log:
+        return None
+
+    return {
+        "date": log.log_date,
+        "mood": log.mood,
+        "sleep_hours": log.sleep_hours,
+        "water_intake": log.water_intake,
+        "stress": log.stress,
+        "exercise": log.exercise,
+    }
+
+
+@app.get("/wellness/week")
+def get_week_wellness(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    start_date = date.today() - timedelta(days=7)
+
+    logs = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date >= start_date,
+        )
+        .order_by(WellnessLog.log_date.desc())
+        .all()
+    )
+
+    return [
+        {
+            "date": log.log_date,
+            "mood": log.mood,
+            "sleep_hours": log.sleep_hours,
+            "water_intake": log.water_intake,
+            "stress": log.stress,
+            "exercise": log.exercise,
+        }
+        for log in logs
+    ]
