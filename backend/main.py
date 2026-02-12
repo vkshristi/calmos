@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from database import engine, SessionLocal
-from models import Base, User, WellnessLog
+from models import Base, User, WellnessLog, FocusSession
 from auth import hash_password, verify_password, create_access_token
 
 app = FastAPI()
@@ -175,3 +175,63 @@ def get_week_wellness(user_email: str, db: Session = Depends(get_db)):
         }
         for log in logs
     ]
+
+
+from pydantic import BaseModel
+
+class FocusRequest(BaseModel):
+    user_email: str
+    duration_minutes: int
+    flow_rating: int
+
+@app.post("/focus")
+def create_focus(data: FocusRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    session = FocusSession(
+        user_id=user.id,
+        duration_minutes=data.duration_minutes,
+        flow_rating=data.flow_rating,
+        start_time=datetime.utcnow(),  # ensure timestamp exists
+    )
+
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    return {"message": "Focus session saved"}
+
+
+@app.get("/focus/today")
+def get_today_focus(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == user.id,
+            FocusSession.start_time >= today_start
+        )
+        .all()
+    )
+
+    total_minutes = sum(s.duration_minutes for s in sessions)
+
+    return {
+        "total_minutes": total_minutes,
+        "sessions": [
+            {
+                "id": s.id,
+                "duration_minutes": s.duration_minutes,
+                "flow_rating": s.flow_rating,
+                "start_time": s.start_time,
+            }
+            for s in sessions
+        ],
+    }

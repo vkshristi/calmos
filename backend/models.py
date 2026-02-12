@@ -32,3 +32,15 @@ class WellnessLog(Base):
     exercise = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="wellness_logs")
+
+class FocusSession(Base):
+    __tablename__ = "focus_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    start_time = Column(DateTime, default=datetime.utcnow)
+    duration_minutes = Column(Integer, nullable=False)
+    flow_rating = Column(Integer, nullable=False)  # 1–5
+
+    user = relationship("User")

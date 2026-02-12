@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WellnessForm from "./WellnessForm";
+import FocusTimer from "./FocusTimer";
 
 const USER_EMAIL = "test@calmos.dev";
 
@@ -11,6 +12,7 @@ export default function DashboardPage() {
   const [today, setToday] = useState<any>(null);
   const [week, setWeek] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [focusSummary, setFocusSummary] = useState<any>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -31,12 +33,18 @@ export default function DashboardPage() {
     const weekRes = await fetch(
       `http://127.0.0.1:8000/wellness/week?user_email=${USER_EMAIL}`
     );
+      const focusRes = await fetch(
+      `http://127.0.0.1:8000/focus/today?user_email=${USER_EMAIL}`
+    );
 
     const todayData = todayRes.ok ? await todayRes.json() : null;
     const weekData = weekRes.ok ? await weekRes.json() : [];
+    const focusData = focusRes.ok ? await focusRes.json() : null;
+
 
     setToday(todayData);
     setWeek(weekData);
+    setFocusSummary(focusData);
     setLoading(false);
   };
 
@@ -71,6 +79,17 @@ export default function DashboardPage() {
           </ul>
         </>
       )}
+
+      <hr />
+      <FocusTimer onComplete={loadWellness} />
+
+      {focusSummary && (
+        <>
+          <h3>Today's Focus</h3>
+          <p>Total Minutes: {focusSummary.total_minutes}</p>
+        </>
+      )}
+
 
       <h2>Last 7 Days</h2>
       <ul>
