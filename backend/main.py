@@ -235,3 +235,49 @@ def get_today_focus(user_email: str, db: Session = Depends(get_db)):
             for s in sessions
         ],
     }
+
+
+@app.get("/summary/today")
+def get_daily_summary(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # ---- Wellness ----
+    today = date.today()
+    wellness = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date == today
+        )
+        .first()
+    )
+
+    # ---- Focus ----
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    focus_sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == user.id,
+            FocusSession.start_time >= today_start
+        )
+        .all()
+    )
+
+    total_focus_minutes = sum(s.duration_minutes for s in focus_sessions)
+
+    avg_flow = (
+        sum(s.flow_rating for s in focus_sessions) / len(focus_sessions)
+        if focus_sessions else None
+    )
+
+    return {
+        "wellness": wellness,
+        "focus": {
+            "total_minutes": total_focus_minutes,
+            "average_flow": avg_flow,
+            "session_count": len(focus_sessions)
+        }
+    }
