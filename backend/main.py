@@ -7,6 +7,8 @@ from datetime import date, datetime, timedelta
 from database import engine, SessionLocal
 from models import Base, User, WellnessLog, FocusSession
 from auth import hash_password, verify_password, create_access_token
+from flow_engine import compute_flow_score
+
 
 app = FastAPI()
 
@@ -279,5 +281,67 @@ def get_daily_summary(user_email: str, db: Session = Depends(get_db)):
             "total_minutes": total_focus_minutes,
             "average_flow": avg_flow,
             "session_count": len(focus_sessions)
+        }
+    }
+
+
+@app.get("/flow/today")
+def get_today_flow(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # ---- Wellness ----
+    today = date.today()
+    wellness = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date == today
+        )
+        .first()
+    )
+
+    wellness_data = None
+    if wellness:
+        wellness_data = {
+            "mood": wellness.mood,
+            "sleep_hours": wellness.sleep_hours,
+            "water_intake": wellness.water_intake,
+            "stress": wellness.stress,
+            "exercise": wellness.exercise,
+        }
+
+    # ---- Focus ----
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == user.id,
+            FocusSession.start_time >= today_start
+        )
+        .all()
+    )
+
+    total_minutes = sum(s.duration_minutes for s in sessions)
+    avg_flow = (
+        sum(s.flow_rating for s in sessions) / len(sessions)
+        if sessions else None
+    )
+
+    focus_summary = {
+        "total_minutes": total_minutes,
+        "average_flow": avg_flow
+    }
+
+    # ---- Flow Score ----
+    score = compute_flow_score(wellness_data, focus_summary)
+
+    return {
+        "flow_score": score,
+        "inputs": {
+            "wellness": wellness_data,
+            "focus": focus_summary
         }
     }
