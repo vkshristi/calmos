@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [flowScore, setFlowScore] = useState<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -31,6 +32,16 @@ export default function DashboardPage() {
 
     const data = res.ok ? await res.json() : null;
 
+    // ---- Fetch Flow Score ----
+    const flowRes = await fetch(
+      `http://127.0.0.1:8000/flow/today?user_email=${USER_EMAIL}`
+    );
+
+    const flowData = flowRes.ok ? await flowRes.json() : null;
+
+    setFlowScore(flowData?.flow_score ?? null);
+
+    // ---- Set Summary ----
     setSummary(data);
     setLoading(false);
   };
@@ -51,6 +62,14 @@ export default function DashboardPage() {
 
       {summary && (
         <>
+          {/* Flow Score */}
+          <hr />
+          <h2>Flow Score</h2>
+          <p style={{ fontSize: "2rem", fontWeight: "bold" }}>
+            {flowScore !== null ? flowScore : "N/A"}
+          </p>
+          <hr />
+                    
           {/* Wellness */}
           {!summary.wellness && <WellnessForm onSuccess={loadSummary} />}
 

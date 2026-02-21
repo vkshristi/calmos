@@ -44,3 +44,13 @@ class FocusSession(Base):
     flow_rating = Column(Integer, nullable=False)  # 1–5
 
     user = relationship("User")
+
+class DailyFlow(Base):
+    __tablename__ = "daily_flow"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    flow_date = Column(Date, nullable=False)
+    flow_score = Column(Integer, nullable=False)
+
+    user = relationship("User")

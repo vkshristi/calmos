@@ -8,7 +8,7 @@ from database import engine, SessionLocal
 from models import Base, User, WellnessLog, FocusSession
 from auth import hash_password, verify_password, create_access_token
 from flow_engine import compute_flow_score
-
+from models import Base, User, WellnessLog, FocusSession, DailyFlow
 
 app = FastAPI()
 
@@ -284,15 +284,15 @@ def get_daily_summary(user_email: str, db: Session = Depends(get_db)):
         }
     }
 
-
 @app.get("/flow/today")
 def get_today_flow(user_email: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # ---- Wellness ----
     today = date.today()
+
+    # Wellness
     wellness = (
         db.query(WellnessLog)
         .filter(
@@ -302,17 +302,7 @@ def get_today_flow(user_email: str, db: Session = Depends(get_db)):
         .first()
     )
 
-    wellness_data = None
-    if wellness:
-        wellness_data = {
-            "mood": wellness.mood,
-            "sleep_hours": wellness.sleep_hours,
-            "water_intake": wellness.water_intake,
-            "stress": wellness.stress,
-            "exercise": wellness.exercise,
-        }
-
-    # ---- Focus ----
+    # Focus
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     sessions = (
@@ -335,13 +325,42 @@ def get_today_flow(user_email: str, db: Session = Depends(get_db)):
         "average_flow": avg_flow
     }
 
-    # ---- Flow Score ----
+    wellness_data = None
+
+    if wellness:
+        wellness_data = {
+            "mood": wellness.mood,
+            "sleep_hours": wellness.sleep_hours,
+            "water_intake": wellness.water_intake,
+            "stress": wellness.stress,
+            "exercise": wellness.exercise,
+        }
+
     score = compute_flow_score(wellness_data, focus_summary)
 
-    return {
-        "flow_score": score,
-        "inputs": {
-            "wellness": wellness_data,
-            "focus": focus_summary
-        }
-    }
+    if score is None:
+        return {"flow_score": None}
+
+    # Check if already stored
+    existing = (
+        db.query(DailyFlow)
+        .filter(
+            DailyFlow.user_id == user.id,
+            DailyFlow.flow_date == today
+        )
+        .first()
+    )
+
+    if existing:
+        existing.flow_score = score
+    else:
+        new_flow = DailyFlow(
+            user_id=user.id,
+            flow_date=today,
+            flow_score=score
+        )
+        db.add(new_flow)
+
+    db.commit()
+
+    return {"flow_score": score}

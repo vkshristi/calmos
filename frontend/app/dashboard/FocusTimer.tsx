@@ -32,22 +32,26 @@ export default function FocusTimer({ onComplete }: { onComplete: () => void }) {
     setCompleted(false);
   };
 
-    const saveSession = async () => {
-        const durationMinutes = DEFAULT_DURATION / 60;
+  const saveSession = async () => {
+  const res = await fetch("http://127.0.0.1:8000/focus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_email: USER_EMAIL,
+      duration_minutes: Math.floor(DEFAULT_DURATION / 60),
+      flow_rating: flowRating,
+    }),
+  });
 
-        await fetch("http://127.0.0.1:8000/focus", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                user_email: USER_EMAIL,
-                duration_minutes: durationMinutes,
-                flow_rating: flowRating,
-            }),
-        });
+  if (res.ok) {
+    // WAIT briefly to ensure DB commit
+    setTimeout(() => {
+      onComplete();
+    }, 300);
+  }
 
-        reset();
-        onComplete();
-    };
+  reset();
+};
 
   return (
     <div>
