@@ -51,6 +51,9 @@ class DailyFlow(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     flow_date = Column(Date, nullable=False)
-    flow_score = Column(Integer, nullable=False)
+
+    predicted_score = Column(Integer, nullable=False)
+    actual_score = Column(Integer, nullable=True)
+    accuracy = Column(Integer, nullable=True)
 
     user = relationship("User")

@@ -352,15 +352,82 @@ def get_today_flow(user_email: str, db: Session = Depends(get_db)):
     )
 
     if existing:
-        existing.flow_score = score
+        existing.predicted_score = score
     else:
         new_flow = DailyFlow(
             user_id=user.id,
             flow_date=today,
-            flow_score=score
+            predicted_score=score
         )
         db.add(new_flow)
 
     db.commit()
 
     return {"flow_score": score}
+
+@app.post("/flow/update-actual")
+def update_actual_flow(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    today = date.today()
+
+    daily_flow = (
+        db.query(DailyFlow)
+        .filter(
+            DailyFlow.user_id == user.id,
+            DailyFlow.flow_date == today
+        )
+        .first()
+    )
+
+    if not daily_flow:
+        raise HTTPException(status_code=404, detail="No predicted flow found")
+
+    sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == user.id,
+            FocusSession.start_time >= datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+        .all()
+    )
+
+    if not sessions:
+        raise HTTPException(status_code=400, detail="No focus sessions today")
+
+    avg_flow_rating = sum(s.flow_rating for s in sessions) / len(sessions)
+
+    # Normalize actual to 0–100
+    actual_score = round(((avg_flow_rating - 1) / 4) * 100)
+
+    predicted = daily_flow.predicted_score
+
+    accuracy = max(0, 100 - abs(predicted - actual_score))
+
+    daily_flow.actual_score = actual_score
+    daily_flow.accuracy = accuracy
+
+    db.commit()
+
+    return {
+        "predicted": predicted,
+        "actual": actual_score,
+        "accuracy": accuracy
+    }
+
+@app.get("/flow/accuracy")
+def get_flow_accuracy(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    records = (
+        db.query(DailyFlow)
+        .filter(DailyFlow.user_id == user.id)
+        .order_by(DailyFlow.flow_date.desc())
+        .all()
+    )
+
+    return records
