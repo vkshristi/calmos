@@ -431,3 +431,38 @@ def get_flow_accuracy(user_email: str, db: Session = Depends(get_db)):
     )
 
     return records
+
+@app.get("/flow/week")
+def get_week_flow(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    start_date = date.today() - timedelta(days=7)
+
+    records = (
+        db.query(DailyFlow)
+        .filter(
+            DailyFlow.user_id == user.id,
+            DailyFlow.flow_date >= start_date
+        )
+        .order_by(DailyFlow.flow_date.asc())
+        .all()
+    )
+
+    if not records:
+        return {"records": [], "average_flow": None, "average_accuracy": None}
+
+    avg_flow = sum(r.predicted_score for r in records) / len(records)
+
+    accuracy_values = [r.accuracy for r in records if r.accuracy is not None]
+    avg_accuracy = (
+        sum(accuracy_values) / len(accuracy_values)
+        if accuracy_values else None
+    )
+
+    return {
+        "records": records,
+        "average_flow": round(avg_flow, 2),
+        "average_accuracy": round(avg_accuracy, 2) if avg_accuracy else None
+    }

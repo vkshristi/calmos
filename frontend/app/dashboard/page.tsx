@@ -12,6 +12,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [flowScore, setFlowScore] = useState<number | null>(null);
+  const [weekFlow, setWeekFlow] = useState<any>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -44,6 +45,14 @@ export default function DashboardPage() {
     // ---- Set Summary ----
     setSummary(data);
     setLoading(false);
+
+    const weekFlowRes = await fetch(
+      `http://127.0.0.1:8000/flow/week?user_email=${USER_EMAIL}`
+    );
+
+    const weekFlowData = weekFlowRes.ok ? await weekFlowRes.json() : null;
+
+    setWeekFlow(weekFlowData);
   };
 
   const logout = () => {
@@ -65,11 +74,54 @@ export default function DashboardPage() {
           {/* Flow Score */}
           <hr />
           <h2>Flow Score</h2>
-          <p style={{ fontSize: "2rem", fontWeight: "bold" }}>
+
+          <div
+            style={{
+              fontSize: "3rem",
+              fontWeight: "bold",
+              color:
+                flowScore && flowScore >= 75
+                  ? "green"
+                  : flowScore && flowScore >= 50
+                  ? "orange"
+                  : "red",
+            }}
+          >
             {flowScore !== null ? flowScore : "N/A"}
+          </div>
+
+          <p>
+            {flowScore && flowScore >= 75
+              ? "High Flow Day"
+              : flowScore && flowScore >= 50
+              ? "Moderate Flow"
+              : "Low Flow — adjust inputs"}
           </p>
           <hr />
-                    
+
+          <hr />
+          <h2>Weekly Flow Trend</h2>
+
+          {weekFlow && weekFlow.records.length === 0 && (
+            <p>No data yet.</p>
+          )}
+
+          {weekFlow && weekFlow.records.length > 0 && (
+            <>
+              <p>7-Day Average Flow: {weekFlow.average_flow}</p>
+              <p>7-Day Average Accuracy: {weekFlow.average_accuracy ?? "N/A"}</p>
+
+              <ul>
+                {weekFlow.records.map((r: any) => (
+                  <li key={r.id}>
+                    {r.flow_date} — Flow: {r.predicted_score}
+                    {r.accuracy !== null && ` | Accuracy: ${r.accuracy}%`}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
           {/* Wellness */}
           {!summary.wellness && <WellnessForm onSuccess={loadSummary} />}
 
