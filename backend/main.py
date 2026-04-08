@@ -9,6 +9,13 @@ from models import Base, User, WellnessLog, FocusSession
 from auth import hash_password, verify_password, create_access_token
 from flow_engine import compute_flow_score
 from models import Base, User, WellnessLog, FocusSession, DailyFlow
+from insights_engine import (
+    sleep_vs_flow,
+    stress_vs_focus,
+    context_switch_penalty,
+    burnout_risk,
+    generate_insights
+)
 
 app = FastAPI()
 
@@ -92,6 +99,7 @@ def create_wellness(
         raise HTTPException(status_code=404, detail="User not found")
 
     today = date.today()
+
 
     existing = (
         db.query(WellnessLog)
@@ -290,7 +298,9 @@ def get_today_flow(user_email: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    today = date.today()
+#    today = date.today()
+    today = date(2026, 4, 5)
+    print("FLOW DATE:", today)
 
     # Wellness
     wellness = (
@@ -465,4 +475,97 @@ def get_week_flow(user_email: str, db: Session = Depends(get_db)):
         "records": records,
         "average_flow": round(avg_flow, 2),
         "average_accuracy": round(avg_accuracy, 2) if avg_accuracy else None
+    }
+
+@app.get("/insights/today")
+def get_insights(user_email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Last 7 days data
+    start_date = date.today() - timedelta(days=7)
+
+    flows = (
+        db.query(DailyFlow)
+        .filter(
+            DailyFlow.user_id == user.id,
+            DailyFlow.flow_date >= start_date
+        )
+        .all()
+    )
+
+    wellness_logs = (
+        db.query(WellnessLog)
+        .filter(
+            WellnessLog.user_id == user.id,
+            WellnessLog.log_date >= start_date
+        )
+        .all()
+    )
+
+    focus_sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == user.id,
+            FocusSession.start_time >= datetime.utcnow() - timedelta(days=7)
+        )
+        .all()
+    )
+
+    # Build combined records
+    records = []
+
+    for flow in flows:
+        date_key = flow.flow_date
+
+        w = next((x for x in wellness_logs if x.log_date == date_key), None)
+
+        sessions = [
+            s for s in focus_sessions
+            if s.start_time.date() == date_key
+        ]
+
+        if not sessions:
+            continue
+
+        total_focus = sum(s.duration_minutes for s in sessions)
+        avg_flow = sum(s.flow_rating for s in sessions) / len(sessions)
+
+        records.append({
+            "sleep": w.sleep_hours if w else None,
+            "stress": w.stress if w else None,
+            "flow": avg_flow,
+            "focus": total_focus,
+            "sessions": len(sessions),
+            "avg_flow": avg_flow
+        })
+
+    if not records:
+        return {"insights": []}
+
+    print("FINAL RECORDS:", records)
+    sleep_corr = sleep_vs_flow(records)
+    stress_corr = stress_vs_focus(records)
+    switch_pen = context_switch_penalty(records)
+
+    latest = records[-1]
+
+    burnout = burnout_risk(latest)
+
+    insights = generate_insights(
+        sleep_corr,
+        stress_corr,
+        switch_pen,
+        burnout
+    )
+
+    return {
+        "insights": insights,
+        "burnout_risk": burnout,
+        "metrics": {
+            "sleep_vs_flow": sleep_corr,
+            "stress_vs_focus": stress_corr,
+            "context_switch_penalty": switch_pen
+        }
     }
